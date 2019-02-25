@@ -63,7 +63,70 @@ def add_list_val(json_obj, key, val):
             json_obj[key] = key_str + '_nextpacket_' + val
     else:
         json_obj[key] = val
-#main
+
+#for dhcpv6
+def req_list2comma_list(raw_list):
+    new_str = ''
+    nums = raw_list.split(':')
+    for i in range(int(len(nums)/2)):
+        temp = nums[i*2] + nums[i*2+1]     
+        temp_num = int(temp, 16)
+        if not new_str:
+            new_str = str(temp_num)
+        else:
+            new_str = new_str + ',' + str(temp_num)
+    return new_str
+
+#for dhcp
+def dhcp_req_list2comma_list(raw_list):
+    new_str = ''
+    nums = raw_list.split(':')
+    for i in range(int(len(nums))):
+        temp = nums[i] 
+        temp_num = int(temp, 16)
+        if not new_str:
+            new_str = str(temp_num)
+        else:
+            new_str = new_str + ',' + str(temp_num)
+    return new_str
+
+#for udp
+def hex_str2char_str(raw_list):
+    new_str = ''
+    nums = raw_list.split(':')
+    for i in range(int(len(nums))):
+        temp = nums[i]
+        temp_num = int(temp, 16)
+        temp_chr = chr(temp_num)
+        if not new_str:
+            new_str = temp_chr
+        else:
+            new_str = new_str + temp_chr
+    return new_str
+
+def mac_gene_feature(json_mac_obj):
+    json_mac_obj['feature_label'] = {}
+    json_feature = json_mac_obj['feature_label']
+    if 'dhcp' in json_mac_obj:
+        json_feature['dhcp'] = json_mac_obj['dhcp']['12']
+    if 'dhcpv6' in json_mac_obj:
+        json_feature['dhcpv6'] = json_mac_obj['dhcpv6']['39']
+    if 'mdns' in json_mac_obj:
+        if 'query' in json_mac_obj['mdns']:
+            json_feature['mdns_name'] = json_mac_obj['mdns']['query']
+    if 'llmnr' in json_mac_obj:
+        json_feature['llmnr'] = json_mac_obj['llmnr']
+    if 'smb' in json_mac_obj:
+        json_feature['smb'] = json_mac_obj['smb']
+    if 'nbns' in json_mac_obj:
+        json_feature['nbns'] = json_mac_obj['nbns']
+    if 'ssdp' in json_mac_obj:
+        if 'user-agent' in json_mac_obj['ssdp']:
+            json_feature['ssdp'] = json_mac_obj['ssdp']['user-agent']
+    if 'udp' in json_mac_obj:
+        json_feature['udp'] = json_mac_obj['udp']
+
+
 
 #create json_root_arr
 json_root_arr = []
@@ -72,8 +135,9 @@ bootp_option_type_cnt = 0
 bootp_option_type_tree_cnt = 0
 bootp_option_request_list_item_cnt = 0
 http_request_line_cnt = 0
+dhcpv6_option_type_cnt = 0
 #remove key duplicate
-file_name = './test'
+file_name = './udp'
 wf = open(file_name+'.json', 'w+', encoding='utf-8')
 with open(file_name,'r') as raw_f:
     for line in raw_f.readlines():
@@ -94,6 +158,10 @@ with open(file_name,'r') as raw_f:
             http_request_line_cnt += 1
             new_str = 'http.request.line' + str(http_request_line_cnt)
             new_line = line.replace('http.request.line', new_str)
+        elif 'dhcpv6.option.type' in line:
+            dhcpv6_option_type_cnt += 1
+            new_str = str(dhcpv6_option_type_cnt) + ',dhcpv6.option.type'
+            new_line = line.replace('dhcpv6.option.type', new_str)
         else:
             new_line = line
         wf.write(new_line)
@@ -178,7 +246,8 @@ for pkt_obj in pkt_arr:
                                 add_val = layer_obj['bootp'][key][tree_key]
         
             if('55' == add_key):
-                add_list_val(json_dhcp_type_obj, add_key, add_val)
+                add_val_str = dhcp_req_list2comma_list(add_val)
+                add_list_val(json_dhcp_type_obj, add_key, add_val_str)
             elif('0' != add_key) and ('' != add_key):
                 add_ptcl_val(json_dhcp_type_obj, add_key, add_val)
         add_ptcl_val(json_dhcp_obj, 'series', series_str)
@@ -188,15 +257,31 @@ for pkt_obj in pkt_arr:
         add_ptcl_obj(json_mac_obj, ptcl)
         json_dhcpv6_obj = json_mac_obj[ptcl]
         series_str = ''
-        for key in dhcpv6_keys:
-            if ('dhcpv6.msgtype' != key and 'dhcpv6.xid' != key):
-                series_str = series_str + ',' + key
-                if('Fully Qualified Domain Name' == key):
-                    add_ptcl_val(json_dhcpv6_obj, key, layer_obj['dhcpv6'][key]['dhcpv6.client_fqdn'])
-                elif('Option Request' == key):
-                    add_list_val(json_dhcpv6_obj, key, layer_obj['dhcpv6'][key]['dhcpv6.option.value'])
-                else:
-                    add_ptcl_val(json_dhcpv6_obj, key, 'nak')
+        opt_cnt = 0
+        while(opt_cnt < dhcpv6_option_type_cnt):
+            opt_cnt += 1
+            add_key = ''
+            add_val = ''
+            type_key = str(opt_cnt) + ',' + 'dhcpv6.option.type'
+            for key in dhcpv6_keys:
+                if ('dhcpv6.msgtype' != key and 'dhcpv6.xid' != key):
+                    type_trees = layer_obj['dhcpv6'][key].keys()
+                    for type_tree in type_trees:
+                        if (type_key == type_tree):
+                            add_key = layer_obj['dhcpv6'][key][type_tree]
+                            if not series_str:
+                                series_str = add_key
+                            else:
+                                series_str = series_str + ',' + add_key
+                    
+                            if('39' == add_key):
+                                add_ptcl_val(json_dhcpv6_obj, add_key, layer_obj['dhcpv6'][key]['dhcpv6.client_fqdn'])
+                            elif('6' == add_key):
+                                req_list = layer_obj['dhcpv6'][key]['dhcpv6.option.value']
+                                req_str = req_list2comma_list(req_list)
+                                add_list_val(json_dhcpv6_obj, add_key, req_str)
+                            else:
+                                add_ptcl_val(json_dhcpv6_obj, add_key, 'nak')
         add_ptcl_val(json_dhcpv6_obj, 'series', series_str)
                 
     if('mdns' == ptcl):
@@ -245,6 +330,7 @@ for pkt_obj in pkt_arr:
         add_ptcl_obj(json_mac_obj, ptcl)
         json_ssdp_obj = json_mac_obj[ptcl]
         json_ssdp_type_obj = {}
+        request_line_list = []
         for key in ssdp_keys:
             if('M-SEARCH' == key.split(' ')[0]):
                 ssdp_type = 'search'
@@ -256,20 +342,31 @@ for pkt_obj in pkt_arr:
                 json_ssdp_type_obj = json_ssdp_obj[ssdp_type]
         for key in ssdp_keys:
             if 'http.request.line' in key:
-                add_key = layer_obj['ssdp'][key].split(': ')[0].lower()
-                add_val = layer_obj['ssdp'][key].split(': ')[1].lower()
-                if('user-agent' == add_key):
-                    add_val = add_val.replace(' ', ',')
-                add_ptcl_val(json_ssdp_type_obj, add_key, add_val)
-    #elif('data' == ptcl):
-    #    data_str = layer_obj['data']['data.data']
-    #    device_name = re.findall(r"DEVICE_NAME=(.+?)\\n", data_str)
-    #    if not device_name:
-    #        add_ptcl_val(json_mac_obj, 'udp', device_name[1])
-            
-        
+                request_line_list.append(key)
+        request_line_list.sort()
+        series_str = ''
+        for item in request_line_list:
+            add_key = layer_obj['ssdp'][item].split(': ')[0].lower()
+            add_val = layer_obj['ssdp'][item].split(': ')[1].lower()
+            if not series_str:
+                series_str = add_key
+            else:
+                series_str = series_str + ',' + add_key
 
-        
-   
-        
+            if('user-agent' == add_key):
+                add_val = add_val.replace(' ', ',')
+            add_ptcl_val(json_ssdp_type_obj, add_key, add_val)
+        add_ptcl_val(json_ssdp_obj, 'series', series_str)
+    elif('data' == ptcl):
+        raw_data_str = layer_obj['data']['data.data']
+        data_str = hex_str2char_str(raw_data_str)
+        device_name = re.findall(r".*DEVICE_NAME=(.+?)\n.*", data_str)
+        if device_name:
+            add_ptcl_val(json_mac_obj, 'udp', device_name[0])
+    
+    mac_gene_feature(json_mac_obj)    
+
+with open('result.json', 'w') as outfile:
+    json.dump(json_root_arr, outfile)
 print(json_root_arr)
+   
