@@ -8,110 +8,40 @@ const char * llmnr_dipv6 = "ff02::1:3";
 const char * smb_nbns_dipv4 = "192.168.255.255";
 const char * ssdp_dipv4 = "239.255.255.250";
 
+const char * np = "_nextpacket_";  //12bytes
+const char * nr = "_nextRR_";  //8bytes
+
 cJSON * json_root = cJSON_CreateArray();
-g_info_t g_info;
 
-int file2hash(){
-	const char * dhcp_option_path = "./support/options.txt";
-	const char * dhcpv6_option_path = "./support/dhcpv6_options.txt";
-	//char oui_path[] = "./support/oui.txt";
-	
-	FILE * dhcp_option_file;
-	FILE * dhcpv6_option_file;
-	//FILE * oui_file;
-
-	dhcp_option_file = fopen(dhcp_option_path, "r");
-	dhcpv6_option_file = fopen(dhcpv6_option_path, "r");
-	//oui_file = fopen(oui_path, "r");
-	
-	if (!dhcp_option_file && !dhcpv6_option_file){
-		printf("file_open_failed");
-		return -1;
+void add_series_2_json(cJSON * ptcl_obj, char * series){
+	char * series_sub_ptr = NULL;
+	cJSON * exist_series = cJSON_GetObjectItem(ptcl_obj, "series");
+	if(NULL == exist_series){
+		cJSON_AddItemToObject(ptcl_obj, "series", exist_series);
 	}
+	else{
+		//check whether value of certain have id_str
+		series_sub_ptr = memmem(exist_series->valuestring, strlen(exist_series->valuestring), series, strlen(series);
+		if(NULL == series_sub_ptr || '_' != *(series_sub_ptr+strlen(series)) || 0 != *(series_sub_ptr+strlen(series))){
+			//certain existed_id_val do not have id_val
+			char * new_str = (char *)calloc(1, strlen(exist_series->valuestring) + strlen(series) + 16);
+			snprintf(new_str, "%s%s%s", exist_series->valuestring, np, cJSON_CreateString(series));
 
-	char line[MAX_LINE_SIZE] = {0};
-
-	while(!feof(dhcp_option_file)){
-		memset(line, 0, sizeof(line));
-		fgets(line, sizeof(line), dhcp_option_file);
-
-		for(int i = 0; i < 256; i ++){
-			memcpy(g_info.dhcp_option_htable[i], line, sizeof(line));
+			//replace old to new
+			cJSON_ReplaceItemInObject(ptcl_obj, "series", new_str);
+			free(new_str);
 		}
 	}
-
-	while(!feof(dhcpv6_option_file)){
-		memset(line, 0, sizeof(line));
-		fgets(line, sizeof(line), dhcpv6_option_file);
-
-		for(int i = 0; i < 144; i ++){
-			memcpy(g_info.dhcpv6_option_htable[i], line, sizeof(line));
-		}
-	}
-
-#if 0
-	//need to think the way to store oui key-value pair
-	while(!feof(oui_file)){
-		memset(line, 0, sizeof(line));
-		fgets(line, sizeof(line), oui_file);
-
-		int add_ret;
-		add_ret = MESA_htable_add(g_info.oui_htable, (const unsigned char *)line, sizeof(line), NULL);
-		if(add_ret <= 0){
-			printf("oui_htable add failed");
-			return -1;
-		}
-	}
-#endif
-
-	fclose(dhcp_option_file);
-	fclose(dhcpv6_option_file);
-	//fclose(oui_file);
-
-	return 1;
 }
 
-int init_device_info_context(device_info_context_t ** param){
-	device_info_context_t * device_info_context = (device_info_context_t *)calloc(1, sizeof(device_info_context_t));
-	device_info_context->dhcp_discover_num = 0;
-	device_info_context->dhcp_request_num = 0;
-	device_info_context->dhcpv6_pkt_num = 0;
-	device_info_context->mdns_pkt_num = 0;
-	device_info_context->ssdp_search_pkt_num = 0;
-	device_info_context->ssdp_notify_pkt_num = 0;
-
-	//hashtable create
-	device_info_context->dhcp_discover_htable = MESA_htable_born();
-	MESA_htable_mature(device_info_context->dhcp_discover_htable);
-	device_info_context->dhcp_request_htable= MESA_htable_born();
-	MESA_htable_mature(device_info_context->dhcp_request_htable);
-	device_info_context->dhcpv6_pkt_htable = MESA_htable_born();
-	MESA_htable_mature(device_info_context->dhcpv6_pkt_htable);
-	device_info_context->mdns_pkt_htable= MESA_htable_born();
-	MESA_htable_mature(device_info_context->mdns_pkt_htable);
-	device_info_context->llmnr_qname_htable= MESA_htable_born();
-	MESA_htable_mature(device_info_context->llmnr_qname_htable);
-	device_info_context->smb_srcname_htable= MESA_htable_born();
-	MESA_htable_mature(device_info_context->smb_srcname_htable);
-	device_info_context->nbns_qname_htable= MESA_htable_born();
-	MESA_htable_mature(device_info_context->nbns_qname_htable);
-	device_info_context->ssdp_search_htable= MESA_htable_born();
-	MESA_htable_mature(device_info_context->ssdp_search_htable);
-	device_info_context->ssdp_notify_htable= MESA_htable_born();
-	MESA_htable_mature(device_info_context->ssdp_notify_htable);
-	device_info_context->udp_devname_htable= MESA_htable_born();
-	MESA_htable_mature(device_info_context->udp_devname_htable);
-	
-	*param = pme;
-	return 0;
-}
-
-void handle_dhcp(const void * pdata, UINT32 datalen, cJSON * dhcp_val_arr, device_info_context_t * device_info_context){
+void handle_dhcp(const void * pdata, UINT32 datalen, cJSON * dhcp_obj){
 	UINT32 magic_num = 0;
+	const char * comma = ",";
 	memcpy(&magic_num, (UINT8 *)pdata + 236, 4);
 	if(magic_num == htol(DHCP_MAGIC_NUM)){
 		UINT8 len = 0;
 		UINT8 id = 0;
+		char id_str[4] = {0};
 		UINT8 * temp = (UINT8 *)pdata + 240;
 
 		//extract the first option_id, option_len and option_val
@@ -121,112 +51,110 @@ void handle_dhcp(const void * pdata, UINT32 datalen, cJSON * dhcp_val_arr, devic
 		if(53 == id){
 			memcpy(&msg_type, temp + 2, len);                 //id_value_int
 		}
-
 		//if dhcp option is not discover nor request
 		if(1 != msg_type || 3 != msg_type){
 			return;
 		}
 
-		//dhcp option is discover/request -->analyze
-		const char * comma = ",";
-		UINT32 opt_size = datalen;
-		char * opt_str = (char *)calloc(1, opt_size);
-		char * opt_tmp = opt_str;
+		//dhcp option is discover/request -> execute
+		cJSON * type_obj = NULL;
+		char * series = (char *)calloc(1, (datalen-240)*sizeof(char));
+		char * series_tmp = series;
 		
-		while(255 != id){
-			memcpy(&len, temp+1, 1);
-			memcpy(opt_tmp, temp, 1);  //copy option_num
-			memcpy(opt_tmp+1, comma, 1); //copy comma
-			
-			if(55 == id){
-				temp += 2;
-				opt_tmp += 2;
-				for(int i = 0; i < len; i ++){
-					memcpy(opt_tmp, temp, 1);
-					memcpy(opt_tmp+1, comma, 1);
-					temp += 1;
-					opt_tmp += 2;
-				}
-			}else{
-				memcpy(opt_tmp+2, temp+2, len);//copy option_val
-				memcpy(opt_tmp+2+len, comma, 1);//copy comma
-
-				opt_tmp += 2+len+1;
-				temp += 2 + len;
-			}
-			memcpy(&id, temp, 1);
-		}
-
-		char type_pkt_key[20] = {0};
 		if(1 == id){
-			//------TODO:check discover_hash_table
-			//if not duplicate
-
-			//how to count the num of pkt in remove duplicate case?????
-			device_info_context->dhcp_discover_num += 1;
-			snprintf(type_pkt_key, "discover_%d", device_info_context->dhcp_discover_num);			
-		}
-		else if(3 == id){
-			device_info_context->dhcp_request_num += 1;
-			snprintf(type_pkt_key, "request_%d", device_info_context->dhcp_request_num);
-		}
-		//if not duplicate
-		cJSON * pkt_obj = cJSON_CreateObject();
-		cJSON_AddItemToArray(dhcp_val_arr, pkt_obj);
-		cJSON_AddItemToObject(pkt_obj, type_pkt_key, cJSON_CreateString(opt_str));
-		
-		free(opt_str);
-		
-
-#if 0
-		cJSON * option; //discover or request
-		cJSON * opt_type;
-		cJSON * opt_val_obj;
-		char opt_type_str[10] = {0};
-		if(1 == id){
-			opt_type_str = "discover";
-		}
-		else if(3 == id){
-			opt_type_str = "request";
-		}
-
-		if(0 != dhcp_arr_size){
-			for(int i = 0; i < dhcp_arr_size; i ++){
-				option = cJSON_GetArrayItem(dhcp_val_arr, i);
-				opt_type = cJSON_GetObjectItem(option, opt_type_str);
-				if(NULL != opt_type){
-					break;
-				}
+			type_obj = cJSON_GetObjectItem(type_obj, "discover");
+			if(NULL == type_obj){
+				type_obj = cJSON_CreateObject();
+				cJSON_AddItemToObject(dhcp_obj, "discover", type_obj);
 			}
 		}
-		if(0 == dhcp_arr_size || NULL == opt_type){
-			opt_type = cJSON_CreateObject();
-			cJSON_AddItemToArray(dhcp_val_arr,opt_type); //add discover obj to dhcp_val_arr
-			opt_val_obj = cJSON_CreateObject();
-			cJSON_AddItemToObject(opt_type, opt_type_str, opt_val_obj); //add discover_val to discover obj
+		else if(3 == id){
+			type_obj = cJSON_GetObjectItem(dhcp_obj, "request");
+			if(NULL == type_obj){
+				type_obj = cJSON_CreateObject();
+				cJSON_AddItemToObject(dhcp_obj, "request", type_obj);
+			}
 		}
 
 		//extract option name and value; then add to opt_val_obj
 		while(id != 255){
+			//write to series
+			memcpy(series_tmp, temp, 1);
+			memcpy(series_tmp+1, comma, 1);
+			series_tmp += 2;
+			
 			len = *(temp + 1);
-			char * id_val = (char *)calloc(1, len + 1);
-			memcpy(id_val, temp + 2, len);
 
-			//if opt_val_obj do not have certain id
-			if(NULL == cJSON_GetObjectItem(opt_val_obj, g_info.dhcp_option_htable[id])){
-				cJSON_AddStringToObject(opt_val_obj, g_info.dhcp_option_htable, id_val);
+			//extract id_val
+			char * req_list = (char *)calloc(1, 64*sizeof(char));
+			char * req_ptr = req_list;
+			if(55 == id){
+				temp += 2;
+				for(int i = 0; i < len; i ++){
+					memcpy(req_list, temp, 1);
+					memcpy(req_list+1, comma, 1);
+					temp += 1;
+					req_list += 2;
+				}
 			}
+			char * id_val = (char *)calloc(1, len + 1);
+			if(55 != id){
+				memcpy(id_val, temp + 2, len);        
+			}
+			
+			//judge if is duplicated
+			cJSON * exist_id;
+			exist_id = cJSON_GetObjectItem(type_obj, id_str);
+			char * substr_ptr = NULL;
+			//if type_obj do not have certain id: add key-value
+			if(NULL == exist_id){
+				cJSON_AddItemToObject(type_obj, id_str, cJSON_CreateString(id_val));
+			}
+			else{
+				//check whether value of certain have id_str
+				substr_ptr == memmem(exist_id->valuestring, strlen(exist_id->valuestring), id_val, strlen(id_val));
+				if(NULL == substr_ptr){
+					//certain existed_id_val do not have id_val
+					char * new_id_str = (char *)calloc(1, strlen(exist_id->valuestring) + strlen(id_val) + 16);
+					snprintf(new_id_str, "%s%s%s", exist_id->valuestring, np, cJSON_CreateString(id_val));
 
+					//replace old to new
+					cJSON_ReplaceItemInObject(type_obj, id_str, new_id_str);
+					free(new_id_str);
+				}
+				else if(55 == id){
+					if('_' != *(substr_ptr+strlen(id_val)) || 0 != *(substr_ptr+strlen(id_val))){
+						//not duplicated, need to be added
+						char * new_id_str = (char *)calloc(1, strlen(exist_id->valuestring) + strlen(req_list) + 16);
+						snprintf(new_id_str, "%s%s%s", exist_id->valuestring, np, req_list);
+
+						//replace old to new
+						cJSON_ReplaceItemInObject(type_obj, id_str, cJSON_CreateString(new_id_str));
+					}
+				}
+			}			
+
+			free(req_list);
+			free(id_val);
+			
 			id = *(temp + 2 + len);
 			temp = temp + 2 + len;
+
+			if(255 == id){
+				memcpy(series_tmp, temp, 1);
+			}
 		}
-#endif
+
+		add_series_2_json(type_obj, series)
+		free(series);
+
 	}
 }
 
-void handle_dhcpv6(const void * pdata, UINT32 datalen, cJSON * dhcpv6_arr, device_info_context_t * device_info_context){
+void handle_dhcpv6(const void * pdata, UINT32 datalen, cJSON * dhcpv6_obj){
 	UINT8 * temp = (UINT8 *)pdata + 4;
 	UINT16 id = 0;
+	char id_str[5] = {0};
 	memcpy(&id, temp, 2);
 
 	//extract dhcpv6_val
@@ -234,73 +162,99 @@ void handle_dhcpv6(const void * pdata, UINT32 datalen, cJSON * dhcpv6_arr, devic
 	const char * nak = "nak";
 	UINT16 len = 0;
 	UINT32 opt_size = datalen;
-	char * opt_str = (char *)calloc(1, opt_size);
-	char * opt_tmp = opt_str;
+
+	char * para_list = (char *)calloc(1, opt_size);
+	char * para_tmp = para_list;
+
+	char * fqdn = (char *)calloc(1, opt_size);
+
+	char * series = (char *)calloc(1, opt_size);
+	char * series_tmp = series;
 
 	UINT32 remain_size = datalen - 4;
 	while(remain_size != 0){
 		memcpy(&len, temp+2, 2);
-		memcpy(opt_tmp, temp, 2);  //copy option_num
-		memcpy(opt_tmp+2, comma, 1); //copy comma
+		memcpy(id_str, temp, 2);  //copy option_num to id_str
+
+		//write to series
+		memcpy(series_tmp, temp, 2);
+		memcpy(series_tmp+2, comma, 1);
+		series_tmp += 3;
 
 		if(0x0027 == id){
 			//extract FQDN
-			memcpy(opt_tmp+3, temp+4, len);
-			memcpy(opt_tmp+3+len, comma, 1);
-			opt_tmp += 3 + len + 1; //opt_num:2bytes; comma:1byte; len; comma:1byte
+			memcpy(fqdn, temp+4, len);
+			memcpy(fqdn+len, comma, 1);
 			temp += 4 + len;
+			remain_size = remain_size - 4 - len;
+
+			//add to json
+			cJSON * exist_fqdn = cJSON_GetObjectItem(dhcpv6_obj, id_str);
+			if(NULL == exist_fqdn){
+				cJSON_AddItemToObject(dhcpv6_obj, id_str, fqdn);
+			}
+			else{
+				//check whether value of certain have id_str
+				if(NULL == memmem(exist_fqdn->valuestring, strlen(exist_fqdn->valuestring), fqdn, strlen(fqdn)){
+					//certain existed_id_val do not have id_val
+					char * new_id_str = (char *)calloc(1, strlen(exist_fqdn->valuestring) + strlen(fqdn) + 16);
+					snprintf(new_id_str, "%s%s%s", exist_fqdn->valuestring, np, cJSON_CreateString(fqdn));
+
+					//replace old to new
+					cJSON_ReplaceItemInObject(dhcpv6_obj, id_str, new_id_str);
+					free(new_id_str);
+				}
+			}
 		}
 		else if(0x0006 == id){
 			//extract request list
-			opt_tmp += 3;
 			temp += 4;
+			remain_size -= 4;
 			for(int i = 0; i < len/2; i ++){
-				memcpy(opt_tmp, temp, 2);
-				memcpy(opt_tmp+2, comma, 1);
+				memcpy(para_tmp, temp, 2);
+				memcpy(para_tmp+2, comma, 1);
 				temp += 2;
-				opt_tmp += 3;
+				remain_size -= 4;
+				para_tmp += 3;
+			}
+
+			char * substr_ptr = NULL;
+			//add to json
+			cJSON * exist_para_list = cJSON_GetObjectItem(dhcpv6_obj, id_str);
+			if(NULL == exist_para_list){
+				cJSON_AddItemToObject(dhcpv6_obj, id_str, para_list);
+			}
+			else{
+				//check whether value of certain have id_str
+				substr_ptr = memmem(exist_para_list->valuestring, strlen(exist_para_list->valuestring), para_list, strlen(para_list);
+				if(NULL == substr_ptr || '_' == *(substr_ptr+strlen(para_list)) || 0 == *(substr_ptr+strlen(para_list))){
+					//certain existed_id_val do not have id_val
+					char * new_str = (char *)calloc(1, strlen(exist_para_list->valuestring) + strlen(para_list) + 16);
+					snprintf(new_str, "%s%s%s", exist_para_list->valuestring, np, cJSON_CreateString(para_list));
+
+					//replace old to new
+					cJSON_ReplaceItemInObject(dhcpv6_obj, id_str, new_str);
+					free(new_str);
+				}
 			}
 		}
 		else{
-			memcpy(opt_tmp+3, nak, 3);
-			memcpy(opt_tmp+6, comma, 1);
-			opt_tmp += 7; //opt_num:2bytes; comma:1byte; nak:3bytes; comma:1byte
+			cJSON_AddItemToObject(dhcpv6_obj, id_str, cJSON_CreateString(nak));
 			temp += 4 + len; //opt_num:2bytes; len:2bytes; len_val
+			remain_size  = remain_size - 4 - len;
 		}
 
 		memcpy(&id, temp, 2);
-	}
 
-	char pkt_key[10] = {0};
-	//------TODO:check discover_hash_table
-	//if not duplicate
-
-	//how to count the num of pkt in remove duplicate case?????
-	device_info_context->dhcpv6_pkt_num += 1;
-	snprintf(pkt_key, "pkt_%d", device_info_context->dhcpv6_pkt_num);			
-	//if not duplicate
-	cJSON * pkt_obj = cJSON_CreateObject();
-	cJSON_AddItemToArray(dhcpv6_arr, pkt_obj);
-	cJSON_AddItemToObject(pkt_obj, pkt_key, cJSON_CreateString(opt_str));
-
-	free(opt_str);
-
-#if 0
-	UINT16 id = 0;
-	id = *temp;
-	int len = *(temp + 2);
-	while(0 != datalen){
-		const char * nak = "nak";
-		len = *(temp + 2);
-		if(NULL == cJSON_GetObjectItem(dhcpv6_val_obj, g_info.dhcpv6_option_htable[id])){
-			cJSON_AddStringToObject(dhcpv6_val_obj, g_info.dhcpv6_option_htable, nak);
+		if(0 == remain_size){
+			memcpy(series_tmp, temp, 2);
 		}
-
-		id = *(temp + 4 + len);
-		temp = temp + 4 + len;
-		datalen = datalen - 4 - len;
 	}
-#endif
+
+	add_series_2_json(dhcpv6_obj, series)
+	free(para_list);
+	free(fqdn);
+	free(series);
 	
 }
 
@@ -312,7 +266,7 @@ void extract_part_name_from_rr(const void * pdata, int offset, char * part_name)
 	memcpy(part_name, temp+1, len);
 }
 
-void extract_rr_from_mdns(const void * pdata, cJSON * rr_val_arr, int num, UINT32 pdatalen){
+void extract_rr_from_mdns(const void * pdata, cJSON * type_obj, int num, UINT32 pdatalen){
 	UINT8 * head = (UINT8 *)pdata;
 	UINT8 * temp = NULL;
 
@@ -364,29 +318,38 @@ void extract_rr_from_mdns(const void * pdata, cJSON * rr_val_arr, int num, UINT3
 		rr_cnt = rr_cnt + 1;
 		offset = offset + 2; //point to the sec record
 
-		snprintf(rr, "%s,%d,%d", name, type, class_flag);
-
-		//cJSON * rr_obj = cJSON_CreateObject();
-		//cJSON_AddItemToArray(rr_val_arr, rr_obj);
-		cJSON_AddItemToArray(rr_val_arr, cJSON_CreateString(rr));
-
+		if(offset == pdatalen){
+			snprintf(rr, "%s,%d,%d", name, type, class_flag);
+		}
+		else if(offset < pdatalen){
+			snprintf(rr, "%s,%d,%d%s", name, type, class_flag, nr);
+		}
+	
 	}
 }
 
 
-void handle_mdns(const void * pdata, cJSON * mdns_val_arr, int mdns_pkt_num, UINT32 pdatalen){
-	char pkt_key[20] = {0};
-	snprintf(pkt_key, "pkt_%d", mdns_pkt_num);
-	
-	cJSON * pkt_obj = cJSON_CreateObject();
-	cJSON_AddItemToArray(mdns_val_arr, pkt_obj);
-	cJSON * pkt_val_arr = cJSON_CreateArray();
-	cJSON_AddItemToObject(pkt_obj, pkt_key, pkt_val_arr); //{"packet_1":[...]}
-
+void handle_mdns(const void * pdata, cJSON * mdns_obj, UINT32 pdatalen){
 	UINT8 * temp = (UINT8 *)pdata + 2; //transaction id : 0x0000
 	UINT16 flag = 0;
 	memcpy(&flag, temp, 2); //flags: 0x0000(query); 0x8400(resposne)
 	temp = temp + 2;
+
+	cJSON * type_obj;
+	if(0x0000 == flag){
+		type_obj = cJSON_GetObjectItem(mdns_obj, "query");
+		if(NULL == type_obj){
+			type_obj = cJSON_CreateObject();
+			cJSON_AddItemToObject(mdns_obj, "query", type_obj);
+		}
+	}
+	else if(0x8400 == flag){
+		type_obj = cJSON_GetObjectItem(mdns_obj, "response");
+		if(NULL == type_obj){
+			type_obj = cJSON_CreateObject();
+			cJSON_AddItemToObject(mdns_obj, "response", type_obj);
+		}
+	}
 
 	UINT16 question_num = 0;
 	UINT16 answer_num = 0;
@@ -399,13 +362,8 @@ void handle_mdns(const void * pdata, cJSON * mdns_val_arr, int mdns_pkt_num, UIN
 	temp = temp + 8;
 
 	//query
-	if(question_num != 0){
-		cJSON * query_obj = cJSON_CreateObject();
-		cJSON_AddItemToArray(pkt_val_arr, query_obj);
-		cJSON * query_val_arr = cJSON_CreateArray();
-		cJSON_AddItemToObject(query_obj, "query", query_val_arr);
-		
-		extract_rr_from_mdns(pdata, query_val_arr, question_num, pdatalen);
+	if(question_num != 0){		
+		extract_rr_from_mdns(pdata, type_obj, question_num, pdatalen);
 	}
 
 	//answer
@@ -440,25 +398,37 @@ void handle_mdns(const void * pdata, cJSON * mdns_val_arr, int mdns_pkt_num, UIN
 
 }
 
-void handle_llmnr(const void * pdata, cJSON * llmnr_val_arr){
+void handle_llmnr(const void * pdata, cJSON * mac_info_obj){
 	UINT8 * head = (UINT8 *)pdata;
-	char name[256] = {0}; //!!!---assume name do not have _
-	int offset = 0;
-	UINT8 len = 0;
+	int offset = 12;
+	char name[64] = {0};   //!!!---assume do not have _
 	//name
-	memcpy(&len, head+offset, 1);
 	extract_part_name_from_rr(pdata, offset, name);
 
-	cJSON_AddItemToArray(llmnr_val_arr, cJSON_CreateString(name));
+	cJSON * llmnr_val;
+	llmnr_val = cJSON_GetObjectItem(mac_info_obj, "llmnr");
+	if(NULL == llmnr_val){
+		cJSON_AddItemToObject(mac_info_obj, "llmnr", cJSON_CreateString(name));
+	}
+	else{
+		//if not duplicated:
+		if(NULL == memmem(llmnr_val->valuestring, strlen(llmnr_val->valuestring), name, sizeof(name))){
+			char * new_llmnr_str = (char *)calloc(1, strlen(llmnr_val->valuestring)+sizeof(name)+16);
+			snprintf(new_llmnr_str, "%s%s%s", llmnr_val->valuestring, np, name);
+			cJSON_ReplaceItemInObject(mac_info_obj, "llmnr", cJSON_CreateString(new_llmnr_str));
+			free(new_llmnr_str);
+		}
+	}
 }
 
+//Input:encoded name; Output:decoded name
 void name_decode(char * encoded_name, char * name){
 	for(int i = 0; i < 16; i ++){
 		name[i] = (encoded_name[2*i]-0x41)<<4 + (encoded_name[2*i+1]-0x41);
 	}
 }
 
-void handle_smb(const void * pdata, cJSON * smb_arr){
+void handle_smb(const void * pdata, cJSON * mac_info_obj){
 	UINT8 * head = (UINT8 *)pdata;
 	char name[32] = {0};
 	int offset = 14; //head+offset points to source_name
@@ -473,37 +443,86 @@ void handle_smb(const void * pdata, cJSON * smb_arr){
 		char encoded_name[32] = {0};
 		memcpy(encoded_name, head+offset, len);
 		name_decode(encoded_name, name);
-		cJSON_AddItemToArray(smb_arr, cJSON_CreateString(name));
+	}
+
+	//add to cjson
+	cJSON * smb_val;
+	smb_val = cJSON_GetObjectItem(mac_info_obj, "smb");
+	if(NULL == smb_val){
+		cJSON_AddItemToObject(mac_info_obj, "smb", cJSON_CreateString(name));
+	}
+	else{
+		//if not duplicated->replace
+		if(NULL == memmem(smb_val->valuestring, strlen(smb_val->valuestring), name, sizeof(name))){
+			char * new_smb_str = (char *)calloc(1, strlen(smb_val->valuestring)+sizeof(name)+16);
+			snprintf(new_smb_str, "%s%s%s", smb_val->valuestring, np, name);
+			cJSON_ReplaceItemInObject(mac_info_obj, "smb", cJSON_CreateString(new_smb_str));
+			free(new_smb_str);
+		}
 	}
 }
 
-void handle_nbns(const void * pdata, cJSON * nbns_arr, int query_num){
+void handle_nbns(const void * pdata, cJSON * mac_info_obj){
 	UINT8 * head = (UINT8 *)pdata;
 	int offset = 12; //head+offset points to query_rr
 	char rr[512] = {0};
-	char name[32] = {0};
+	char name[32] = {0}; //!!!---Assume ssdp only 1 queryname
 
 	UINT8 len = 0;
 	memcpy(&len, head+offset, 1);
 	offset += 1;
 	if(len != 0x20){
-		printf("warning:nbns sourcename more than 16 byte!");
+		printf("warning:nbns queryname more than 16 byte!");
 	}
 	else{
 		char encoded_name[32] = {0};
 		memcpy(encoded_name, head+offset, len);
 		name_decode(encoded_name, name);
-		cJSON_AddItemToArray(nbns_arr, cJSON_CreateString(name));
 	}	
+
+	//add to cjson
+	cJSON * nbns_val;
+	nbns_val = cJSON_GetObjectItem(mac_info_obj, "nbns");
+	if(NULL == nbns_val){
+		cJSON_AddItemToObject(mac_info_obj, "nbns", cJSON_CreateString(name));
+	}
+	else{
+		//if not duplicated->replace
+		if(NULL == memmem(nbns_val->valuestring, strlen(nbns_val->valuestring), name, sizeof(name))){
+			char * new_nbns_str = (char *)calloc(1, strlen(nbns_val->valuestring)+sizeof(name)+16);
+			snprintf(new_nbns_str, "%s%s%s", nbns_val->valuestring, np, name);
+			cJSON_ReplaceItemInObject(mac_info_obj, "nbns", cJSON_CreateString(new_nbns_str));
+			free(new_nbns_str);
+		}
+	}
 }
 
-void handle_ssdp(const void * pdata, cJSON * ssdp_arr, device_info_context_t * device_info_context){
+void handle_ssdp(const void * pdata, UINT32 datalen, cJSON * ssdp_obj){
 	UINT8 * head = (UINT8 *)pdata;
-	cJSON * type_obj = cJSON_CreateObject(void);
+	cJSON * type_obj;
 	//search or notify
 	UINT8 flag = 0; //using to classify M(-SEARCH) and N(otify), 4D=M;4E=N
 	flag = *pdata;
-	if(0x4d == flag){
+
+	//val item extract: split by 0d0a
+	char * val = (char *)calloc(1, datalen*sizeof(char)+1);
+	memcpy(val, head, datalen);
+	char * p_item = strtok(val, "\r\n");
+	while(p_item != NULL){
+		
+	}
+	free(val);
+	
+	if(0x4d == flag){ //search
+		type_obj = cJSON_GetObjectItem(ssdp_obj, "search");
+		if(NULL == type_obj){
+			type_obj = cJSON_CreateObject();
+			cJSON_AddItemToObject(type_obj, "search", type_obj);
+		}
+		else{
+			
+		}
+		
 		device_info_context->ssdp_search_pkt_num += 1;
 		char search_key[20] = {0};
 		snprintf(search_key, "search_%d", device_info_context->ssdp_search_pkt_num);
@@ -512,7 +531,7 @@ void handle_ssdp(const void * pdata, cJSON * ssdp_arr, device_info_context_t * d
 		cJSON * search_arr = cJSON_CreateArray();
 		cJSON_AddItemToObject(search_obj; search_key, search_arr);
 	}
-	else if(0x4e == flag){
+	else if(0x4e == flag){ //notify
 		device_info_context->ssdp_notify_pkt_num += 1;
 		char notify_key[20] = {0};
 		snprintf(notify_key, "notify_%d", device_info_context->ssdp_notify_pkt_num);
@@ -617,13 +636,13 @@ int DEVICE_INFO_EXTRACT_ENTRY(const struct streaminfo * a_udp, void ** param, in
 		switch(base_info->dport){
 			case 67:
 				if (68 == base_info->sport){ //dhcp protocol
-					cJSON * dhcp_arr;
-					dhcp_arr = cJSON_GetObjectItem(mac_info_obj, "dhcp");
-					if(NULL == dhcp_arr){ //do not have dhcp value
-						dhcp_arr = cJSON_CreateArray();
-						cJSON_AddItemToObject(mac_info_obj, "dhcp", dhcp_arr);
+					cJSON * dhcp_obj;
+					dhcp_obj = cJSON_GetObjectItem(mac_info_obj, "dhcp");
+					if(NULL == dhcp_obj){ //do not have dhcp value
+						dhcp_obj = cJSON_CreateObject();
+						cJSON_AddItemToObject(mac_info_obj, "dhcp", dhcp_obj);
 					}
-					handle_dhcp(a_udp->pudpdetail->pdata, a_udp->pudpdetail->datalen, dhcp_arr, device_info_context);
+					handle_dhcp(a_udp->pudpdetail->pdata, a_udp->pudpdetail->datalen, dhcp_obj);
 				}
 				else{
 					printf("dhcp error");
@@ -631,13 +650,13 @@ int DEVICE_INFO_EXTRACT_ENTRY(const struct streaminfo * a_udp, void ** param, in
 				break;
 			case 547:
 				if (546 == base_info->sport){ //dhcpv6 protocol
-					cJSON * dhcpv6_arr;
-					dhcpv6_arr = cJSON_GetObjectItem(mac_info_obj, "dhcpv6");
-					if(NULL == dhcpv6_arr){
-						dhcpv6_arr = cJSON_CreateArray();
-						cJSON_AddItemToObject(mac_info_obj, "dhcpv6", dhcpv6_arr);
+					cJSON * dhcpv6_obj;
+					dhcpv6_obj = cJSON_GetObjectItem(mac_info_obj, "dhcpv6");
+					if(NULL == dhcpv6_obj){
+						dhcpv6_obj = cJSON_CreateObject();
+						cJSON_AddItemToObject(mac_info_obj, "dhcpv6", dhcpv6_obj);
 					}
-					handle_dhcpv6(a_udp->pudpdetail->pdata, a_udp->pudpdetail->datalen, dhcpv6_arr, device_info_context);
+					handle_dhcpv6(a_udp->pudpdetail->pdata, a_udp->pudpdetail->datalen, dhcpv6_obj);
 				}
 				else{
 					printf("dhcpv6 error");
@@ -646,16 +665,14 @@ int DEVICE_INFO_EXTRACT_ENTRY(const struct streaminfo * a_udp, void ** param, in
 			case 5353:
 				if ((a_udp->addr.addrtype == ADDR_TYPE_IPV4 && 0 != strcmp(mdns_dipv4, a_udp->addr.tuple4_v4->daddr))
 					|| (a_udp->addr.addrtype == ADDR_TYPE_IPV6 && 0 != strcmp(mdns_dipv6, a_udp->addr.tuple4_v6->daddr))){ //mdns protocol
-					//count for mdns_pkt_num
-					device_info_context->mdns_pkt_num += 1;
 
-					cJSON * mdns_arr;
-					mdns_arr = cJSON_GetObjectItem(mac_info_obj, "mdns");
-					if(NULL == mdns_arr){
-						mdns_arr = cJSON_CreateArray();
-						cJSON_AddItemToObject(mac_info_obj, "mdns", mdns_arr);
+					cJSON * mdns_obj;
+					mdns_obj = cJSON_GetObjectItem(mac_info_obj, "mdns");
+					if(NULL == mdns_obj){
+						mdns_obj = cJSON_CreateObject();
+						cJSON_AddItemToObject(mac_info_obj, "mdns", mdns_obj);
 					}
-					handle_mdns(a_udp->pudpdetail->pdata, mdns_arr, device_info_context->mdns_pkt_num, a_udp->pudpdetail->datalen);
+					handle_mdns(a_udp->pudpdetail->pdata, mdns_obj, a_udp->pudpdetail->datalen);
 				}
 				else{
 					printf("mdns error");
@@ -665,14 +682,7 @@ int DEVICE_INFO_EXTRACT_ENTRY(const struct streaminfo * a_udp, void ** param, in
 				if ((a_udp->addr.addrtype == ADDR_TYPE_IPV4 && 0 != strcmp(llmnr_dipv4, a_udp->addr.tuple4_v4->daddr))
 					|| (a_udp->addr.addrtype == ADDR_TYPE_IPV6 && 0 != strcmp(llmnr_dipv6, a_udp->addr.tuple4_v6->daddr))){ //llmnr protocol
 
-					cJSON * llmnr_arr;
-					llmnr_arr = cJSON_GetObjectItem(mac_info_obj, "llmnr");
-					if(NULL == llmnr_arr){
-						llmnr_arr = cJSON_CreateArray();
-						cJSON_AddItemToObject(mac_info_obj, "llmnr", llmnr_arr);
-					}
-
-					handle_llmnr(a_udp->pudpdetail->pdata, llmnr_arr);
+					handle_llmnr(a_udp->pudpdetail->pdata, mac_info_obj);
 				}
 				else{
 					printf("llmnr error");
@@ -681,14 +691,7 @@ int DEVICE_INFO_EXTRACT_ENTRY(const struct streaminfo * a_udp, void ** param, in
 			case 138:
 				if (a_udp->addr.addrtype == ADDR_TYPE_IPV4 && 0 != strcmp(smb_nbns_dipv4, a_udp->addr.tuple4_v4->daddr)){ //smb protocol
 
-					cJSON * smb_arr;
-					smb_arr = cJSON_GetObjectItem(mac_info_obj, "smb");
-					if(NULL == smb_arr){
-						smb_arr = cJSON_CreateArray();
-						cJSON_AddItemToObject(mac_info_obj, "smb", smb_arr);
-					}
-					
-					handle_smb(a_udp->pudpdetail->pdata, smb_arr);
+					handle_smb(a_udp->pudpdetail->pdata, mac_info_obj);
 				}
 				else{
 					printf("smb error");
@@ -700,14 +703,7 @@ int DEVICE_INFO_EXTRACT_ENTRY(const struct streaminfo * a_udp, void ** param, in
 					UINT16 query_num = 0;
 					memcpy(&query_num, (UINT8 *)a_udp->pudpdetail->pdata+4, 2);
 					if(0 != query_num){
-						cJSON * nbns_arr;
-						nbns_arr = cJSON_GetObjectItem(mac_info_obj, "nbns");
-						if(NULL == nbns_arr){
-							nbns_arr = cJSON_CreateArray();
-							cJSON_AddItemToObject(mac_info_obj, "nbns", nbns_arr);
-						}
-
-						handle_nbns(a_udp->pudpdetail->pdata, nbns_arr, query_num);
+						handle_nbns(a_udp->pudpdetail->pdata, mac_info_obj, query_num);
 					}
 				}
 				else{
@@ -717,14 +713,14 @@ int DEVICE_INFO_EXTRACT_ENTRY(const struct streaminfo * a_udp, void ** param, in
 			case 1900:
 				if (a_udp->addr.addrtype == ADDR_TYPE_IPV4 && 0 != strcmp(ssdp_dipv4, a_udp->addr.tuple4_v4->daddr)){ //ssdp protocol
 					//!!!---Assume all types of ssdp pkts are {search, notify}.  if not, arr of ssdp val will be NULL
-					cJSON * ssdp_arr;
-					ssdp_arr = cJSON_GetObjectItem(mac_info_obj, "ssdp");
-					if(NULL == ssdp_arr){
-						ssdp_arr = cJSON_CreateArray();
-						cJSON_AddItemToObject(mac_info_obj, "ssdp", ssdp_arr);
+					cJSON * ssdp_obj;
+					ssdp_obj = cJSON_GetObjectItem(mac_info_obj, "ssdp");
+					if(NULL == ssdp_obj){
+						ssdp_obj = cJSON_CreateObject();
+						cJSON_AddItemToObject(mac_info_obj, "ssdp", ssdp_obj);
 					}
 					
-					handle_ssdp(a_udp->pudpdetail->pdata, ssdp_arr, device_info_context);
+					handle_ssdp(a_udp->pudpdetail->pdata, a_udp->pudpdetail->datalen, ssdp_obj);
 				}
 				else{
 					printf("ssdp error");
@@ -754,11 +750,22 @@ int DEVICE_INFO_EXTRACT_ENTRY(const struct streaminfo * a_udp, void ** param, in
 					memcpy(device_name, head+device_name_offset, device_name_len);
 
 					//add to json obj
-					cJSON * device_name_arr = cJSON_GetObjectItem(mac_info_obj, "udp");   //!!!---assume only one device name
-					if(NULL == device_name_arr){
-						device_name_arr = cJSON_CreateArray();
-						cJSON_AddItemToArray(device_name_arr, device_name);
+					cJSON * udp_val = cJSON_GetObjectItem(mac_info_obj, "udp");   //!!!---assume only one device name
+					
+					//add to cjson
+					if(NULL == udp_val){
+						cJSON_AddItemToObject(mac_info_obj, "udp", cJSON_CreateString(device_name));
 					}
+					else{
+						//if not duplicated->replace
+						if(NULL == memmem(udp_val->valuestring, strlen(udp_val->valuestring), device_name, sizeof(device_name))){
+							char * new_udp_str = (char *)calloc(1, strlen(udp_val->valuestring)+sizeof(device_name)+16);
+							snprintf(new_udp_str, "%s%s%s", udp_val->valuestring, np, device_name);
+							cJSON_ReplaceItemInObject(mac_info_obj, "udp", cJSON_CreateString(device_name));
+							free(new_udp_str);
+						}
+					}
+					
 				}
 		}
 
