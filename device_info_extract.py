@@ -52,6 +52,7 @@ def add_mdns_rrs(layer_obj, key):
         return val
     keys = layer_obj['mdns'][key].keys()
     val = ''
+    model = ''
     for rr_key in keys:
         if not val:
             val = rr_key.replace(':', ',').replace('.', ',').lower()
@@ -64,6 +65,9 @@ def add_mdns_rrs(layer_obj, key):
                     if ('dns.txt' in txt_key) and ('dns.txt.length' not in txt_key):
                         #print(layer_obj['mdns'][key][rr_key][txt_key])
                         val = val + ',' + layer_obj['mdns'][key][rr_key][txt_key]        
+                        if 'model=' in layer_obj['mdns'][key][rr_key][txt_key]:
+                            model = layer_obj['mdns'][key][rr_key][txt_key].split('=')[1]
+    val = val + '&&' + model
     return val
 
 def add_list_val(json_obj, key, val):
@@ -130,10 +134,10 @@ def extract_mdns_dot1(raw_str):
                 new_str = new_str + ',' + rr.split(',')[0]
     return new_str
 
-def mac_gene_feature(json_mac_obj, resolved_mac):
+def mac_gene_feature(json_mac_obj, resolved_mac, model):
     json_mac_obj['feature_label'] = {}
     json_feature = json_mac_obj['feature_label']
-    json_feature['vendor'] = resolved_mac.split(':')[0]
+    json_feature['vendor'] = resolved_mac.split('_')[0]
     if 'dhcp' in json_mac_obj:
         if 'request' in json_mac_obj['dhcp']:
             if '12' in json_mac_obj['dhcp']['request']:
@@ -149,6 +153,8 @@ def mac_gene_feature(json_mac_obj, resolved_mac):
             raw_q_str = json_mac_obj['mdns']['query']['query']
             q_name = extract_mdns_dot1(raw_q_str)
             json_feature['mdns_name'] = q_name
+        if model:
+            json_feature['mdns_model'] = model
     if 'llmnr' in json_mac_obj:
         json_feature['llmnr'] = json_mac_obj['llmnr']
     if 'smb' in json_mac_obj:
@@ -229,6 +235,8 @@ with open(file_name+'.json', 'r') as load_f:
     pkt_arr = json.load(load_f)
 
 for pkt_obj in pkt_arr:
+    model = ''
+
     src_obj = pkt_obj['_source']
     layer_obj = src_obj['layers']
     
@@ -310,15 +318,15 @@ for pkt_obj in pkt_arr:
                         for tree_key in tree_keys:
                             if('bootp.option.length' != tree_key) and ('bootp.option.value' != tree_key) and ('bootp.hw.type' != tree_key):
                                 add_val = layer_obj['bootp'][key][tree_key]
+                                if mac == add_val:
+                                    add_val = resolved_mac.split('_')[0]
         
             if('55' == add_key):
                 add_val_str = dhcp_req_list2comma_list(add_val)
                 add_list_val(json_dhcp_type_obj, add_key, add_val_str)
             elif('0' != add_key) and ('' != add_key):
-                if type(add_val) != str:
-                    print(add_val)
-                add_ptcl_val(json_dhcp_type_obj, add_key, add_val.lower())
-        add_ptcl_val(json_dhcp_obj, 'series', series_str)
+                add_ptcl_val(json_dhcp_type_obj, add_key, add_val.replace('.', ',').lower())
+        add_ptcl_val(json_dhcp_type_obj, 'series', series_str)
 
     elif('dhcpv6' == ptcl):
         dhcpv6_keys = layer_obj['dhcpv6'].keys()
@@ -343,7 +351,7 @@ for pkt_obj in pkt_arr:
                                 series_str = series_str + ',' + add_key
                     
                             if('39' == add_key):
-                                add_ptcl_val(json_dhcpv6_obj, add_key, layer_obj['dhcpv6'][key]['dhcpv6.client_fqdn'])
+                                add_ptcl_val(json_dhcpv6_obj, add_key, layer_obj['dhcpv6'][key]['dhcpv6.client_fqdn'].replace('.', ',').lower())
                             elif('6' == add_key):
                                 req_list = layer_obj['dhcpv6'][key]['dhcpv6.option.value']
                                 req_str = req_list2comma_list(req_list)
@@ -369,16 +377,20 @@ for pkt_obj in pkt_arr:
                     json_mdns_type_obj = json_mdns_obj[mdns_type]
         for key in mdns_keys:
             if('Queries' == key):
-                q_val = add_mdns_rrs(layer_obj, key)
+                q_val = add_mdns_rrs(layer_obj, key).split('&&')[0]
+                model = add_mdns_rrs(layer_obj, key).split('&&')[1]
                 add_ptcl_val(json_mdns_type_obj, 'query', q_val)
             elif('Answers' == key):
-                a_val = add_mdns_rrs(layer_obj, key)
+                a_val = add_mdns_rrs(layer_obj, key).split('&&')[0]
+                model = add_mdns_rrs(layer_obj, key).split('&&')[1]
                 add_ptcl_val(json_mdns_type_obj, 'answer', a_val)
             elif('Additional records' == key):
-                add_val = add_mdns_rrs(layer_obj, key)
+                add_val = add_mdns_rrs(layer_obj, key).split('&&')[0]
+                model = add_mdns_rrs(layer_obj, key).split('&&')[1]
                 add_ptcl_val(json_mdns_type_obj, 'additional', add_val)
             elif('Authoritative nameservers' == key):
-                auth_val = add_mdns_rrs(layer_obj, key)
+                auth_val = add_mdns_rrs(layer_obj, key).split('&&')[0]
+                model = add_mdns_rrs(layer_obj, key).split('&&')[1]
                 add_ptcl_val(json_mdns_type_obj, 'authoritative', auth_val)
     elif('llmnr' == ptcl):
         llmnr_keys = layer_obj['llmnr']['Queries'].keys()
@@ -463,9 +475,11 @@ for pkt_obj in pkt_arr:
             if device_name:
                 add_ptcl_val(json_mac_obj, 'udp', device_name[0])
     
-    mac_gene_feature(json_mac_obj, resolved_mac)    
+    mac_gene_feature(json_mac_obj, resolved_mac, model)    
 
 with open('result.json', 'w') as outfile:
     json.dump(json_root_arr, outfile, indent=4)
+
+
 #print(json_root_arr)
    
