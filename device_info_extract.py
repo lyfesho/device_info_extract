@@ -1,5 +1,6 @@
 import json
 import re
+import pandas as pd
 
 def find_mac_obj(json_root_arr, mac):
     for json_pkt_obj in json_root_arr:
@@ -165,11 +166,11 @@ def mac_gene_feature(json_mac_obj, resolved_mac, model):
         if 'search' in json_mac_obj['ssdp']:
             if 'user-agent' in json_mac_obj['ssdp']['search']:
                 json_feature['ssdp'] = {}
-                json_feature['ssdp']['user-agent'] = json_mac_obj['ssdp']['search']['user-agent']
+                json_feature['ssdp']['user-agent'] = json_mac_obj['ssdp']['search']['user-agent'].replace('_nextpacket_', ',').replace('_nextrr_', ',')
         if 'notify' in json_mac_obj['ssdp']:
             if 'server' in json_mac_obj['ssdp']['notify']:
                 json_feature['ssdp'] = {}
-                json_feature['ssdp']['server'] = json_mac_obj['ssdp']['notify']['server']
+                json_feature['ssdp']['server'] = json_mac_obj['ssdp']['notify']['server'].replace('_nextpacket_', ',').replace('_nextrr_', ',')
     if 'udp' in json_mac_obj:
         json_feature['udp'] = json_mac_obj['udp']
 
@@ -480,6 +481,27 @@ for pkt_obj in pkt_arr:
 with open('result.json', 'w') as outfile:
     json.dump(json_root_arr, outfile, indent=4)
 
-
+#generate csv file
+#mac|feature
+mac_list = []
+feature_list = []
+for mac_obj in json_root_arr:
+    mac_list.append(mac_obj['mac'])
+    feature_str = ''
+    for key in mac_obj['feature_label'].keys():
+        if 'ssdp' == key:
+            for type_key in mac_obj['feature_label']['ssdp'].keys():
+                if not feature_str:
+                    feature_str = mac_obj['feature_label']['ssdp'][type_key].replace('\r\n', '')
+                else:
+                    feature_str = feature_str + ',' + mac_obj['feature_label']['ssdp'][type_key].replace('\r\n', '')
+        else:
+            if not feature_str:
+                feature_str = mac_obj['feature_label'][key].replace('\r\n', '')
+            else:
+                feature_str = feature_str + ',' + mac_obj['feature_label'][key].replace('\r\n', '')
+    feature_list.append(feature_str)
+dataframe = pd.DataFrame({'mac':mac_list, 'feature':feature_list}, columns=["mac", "feature"])
+dataframe.to_csv("result.csv", sep=',')
 #print(json_root_arr)
    
