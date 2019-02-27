@@ -19,6 +19,8 @@ def extract_ptcl(layer_obj):
     if ('data' == ptcl) and ('udp' in layer_obj):
         dst_port = layer_obj['udp']['udp.dstport']
         ptcl = 'udp_' + dst_port
+    elif ('data' == ptcl):
+        ptcl = ptcl_str.split(':')[-2]
     return ptcl
 
 def gene_ptcl_obj(json_pkt_obj, ptcl):
@@ -142,10 +144,14 @@ def mac_gene_feature(json_mac_obj, resolved_mac, model):
     if 'dhcp' in json_mac_obj:
         if 'request' in json_mac_obj['dhcp']:
             if '12' in json_mac_obj['dhcp']['request']:
-                json_feature['dhcp'] = json_mac_obj['dhcp']['request']['12']
+                json_feature['dhcp_hostname'] = json_mac_obj['dhcp']['request']['12']
+            if '60' in json_mac_obj['dhcp']['request']:
+                json_feature['dhcp_vendorclass'] = json_mac_obj['dhcp']['request']['60']
         if 'discover' in json_mac_obj['dhcp']:
             if '12' in json_mac_obj['dhcp']['discover']:
-                json_feature['dhcp'] = json_mac_obj['dhcp']['discover']['12']
+                json_feature['dhcp_hostname'] = json_mac_obj['dhcp']['discover']['12']
+            if '60' in json_mac_obj['dhcp']['discover']:
+                json_feature['dhcp_vendorclass'] = json_mac_obj['dhcp']['discover']['60']
     if 'dhcpv6' in json_mac_obj:
         if '39' in json_mac_obj['dhcpv6']:
             json_feature['dhcpv6'] = json_mac_obj['dhcpv6']['39']
@@ -157,20 +163,23 @@ def mac_gene_feature(json_mac_obj, resolved_mac, model):
         if model:
             json_feature['mdns_model'] = model
     if 'llmnr' in json_mac_obj:
-        json_feature['llmnr'] = json_mac_obj['llmnr']
+        json_feature['llmnr'] = re.sub(r'_nextpacket_|_nextrr_', ',', json_mac_obj['llmnr'])
     if 'smb' in json_mac_obj:
-        json_feature['smb'] = json_mac_obj['smb']
+        json_feature['smb'] = re.sub(r'_nextpacket_|_nextrr_', ',', json_mac_obj['smb'])
     if 'nbns' in json_mac_obj:
-        json_feature['nbns'] = json_mac_obj['nbns']
+        json_feature['nbns'] = re.sub(r'_nextpacket_|_nextrr_', ',', json_mac_obj['nbns'])
     if 'ssdp' in json_mac_obj:
         if 'search' in json_mac_obj['ssdp']:
             if 'user-agent' in json_mac_obj['ssdp']['search']:
                 json_feature['ssdp'] = {}
-                json_feature['ssdp']['user-agent'] = json_mac_obj['ssdp']['search']['user-agent'].replace('_nextpacket_', ',').replace('_nextrr_', ',')
+                json_feature['ssdp']['user-agent'] = re.sub(r'_nextpacket_|_nextrr_', ',', json_mac_obj['ssdp']['search']['user-agent'])
         if 'notify' in json_mac_obj['ssdp']:
             if 'server' in json_mac_obj['ssdp']['notify']:
-                json_feature['ssdp'] = {}
-                json_feature['ssdp']['server'] = json_mac_obj['ssdp']['notify']['server'].replace('_nextpacket_', ',').replace('_nextrr_', ',')
+                if 'ssdp' not in json_feature:
+                    json_feature['ssdp'] = {}
+                else:
+                    json_ssdp_feature = json_feature['ssdp']
+                    json_ssdp_feature['server'] = re.sub(r'_nextpacket_|_nextrr_', ',', json_feature['ssdp']['notify']['server'])
     if 'udp' in json_mac_obj:
         json_feature['udp'] = json_mac_obj['udp']
 
@@ -188,14 +197,14 @@ dns_txt_cnt = 0
 http_cnt = 0
 
 #remove key duplicate
-file_name = './test'
+file_name = './train_data2'
 wf = open(file_name+'.json', 'w+', encoding='utf-8')
 with open(file_name,'r') as raw_f:
     for line in raw_f.readlines():
         if 'ip6.arpa' in line:
             line = re.sub(r'(?<=[\"\s])[0-9A-F\.]{64}(?=ip6\.arpa)', 'ipv6,', line)
         line = re.sub(r'((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)', 'ipv4', line)
-        if ('dhcp' not in line) and ('bootp' not in line):
+        if ('dhcp' not in line) and ('bootp' not in line) and ('data.data' not in line):
             line = re.sub(r'(?<![:])([a-f0-9]{1,4}(:[a-f0-9]{1,4}){7}|[a-f0-9]{1,4}(:[a-f0-9]{1,4}){0,7}::[a-f0-9]{0,4}(:[a-f0-9]{1,4}){0,7})(?!:)', 'ipv6', line)
         if 'bootp.option.type\"' in line:
             bootp_option_type_cnt += 1
@@ -310,7 +319,7 @@ for pkt_obj in pkt_arr:
                         add_val = layer_obj['bootp'][key]['bootp.option.value']
             elif('81' == add_key):
                 for key in bootp_keys:
-                    if(val_key == key):
+                    if(val_key == key) and ('bootp.fqdn.name' in layer_obj['bootp'][key]):
                         add_val = layer_obj['bootp'][key]['bootp.fqdn.name']
             elif('0' != add_key):
                 for key in bootp_keys:
@@ -455,7 +464,11 @@ for pkt_obj in pkt_arr:
                     add_key = ''
             elif 'search' == ssdp_type:
                 add_key = layer_obj['ssdp'][item].split(': ')[0].lower()
-                add_val = layer_obj['ssdp'][item].split(': ')[1].lower()
+                if len(layer_obj['ssdp'][item].split(': ')) > 1:
+                    add_val = layer_obj['ssdp'][item].split(': ')[1].lower()
+                else:
+                    add_val = 'nak'
+
             
             if add_key:
                 if (not series_str):
