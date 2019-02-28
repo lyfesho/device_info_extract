@@ -49,12 +49,12 @@ def add_ptcl_val(json_pkt_obj, ptcl, val):
         json_pkt_obj[ptcl] = val
 
 def add_mdns_rrs(layer_obj, key):
+    val = ''
     if type(layer_obj['mdns'][key]) == str:
         if ('' != layer_obj['mdns'][key]):
             val = layer_obj['mdns'][key]
         return val
     keys = layer_obj['mdns'][key].keys()
-    val = ''
     model = ''
     for rr_key in keys:
         if not val:
@@ -64,13 +64,18 @@ def add_mdns_rrs(layer_obj, key):
         
         if 'dns.resp.type' in layer_obj['mdns'][key][rr_key]:
             if '16' == layer_obj['mdns'][key][rr_key]['dns.resp.type']:
-                for txt_key in layer_obj['mdns'][key][rr_key].keys():
+                txt_list = []
+                for rr_val_key in layer_obj['mdns'][key][rr_key].keys():
+                    txt_list.append(rr_val_key)
+                txt_list.sort()
+                for txt_key in txt_list:
                     if ('dns.txt' in txt_key) and ('dns.txt.length' not in txt_key):
                         #print(layer_obj['mdns'][key][rr_key][txt_key])
                         val = val + ',' + layer_obj['mdns'][key][rr_key][txt_key]        
                         if 'model=' in layer_obj['mdns'][key][rr_key][txt_key]:
                             model = layer_obj['mdns'][key][rr_key][txt_key].split('=')[1]
-    val = val + '&&' + model
+    if model:
+        val = val + '&&' + model
     return val
 
 def add_list_val(json_obj, key, val):
@@ -156,8 +161,8 @@ def mac_gene_feature(json_mac_obj, resolved_mac, model):
         if '39' in json_mac_obj['dhcpv6']:
             json_feature['dhcpv6'] = json_mac_obj['dhcpv6']['39']
     if 'mdns' in json_mac_obj:
-        if 'query' in json_mac_obj['mdns']:
-            raw_q_str = json_mac_obj['mdns']['query']['query']
+        if 'response' in json_mac_obj['mdns']:
+            raw_q_str = json_mac_obj['mdns']['response']['answer'] #query:query, response:answer
             q_name = extract_mdns_dot1(raw_q_str)
             json_feature['mdns_name'] = q_name
         if model:
@@ -177,9 +182,10 @@ def mac_gene_feature(json_mac_obj, resolved_mac, model):
             if 'server' in json_mac_obj['ssdp']['notify']:
                 if 'ssdp' not in json_feature:
                     json_feature['ssdp'] = {}
+                    json_feature['ssdp']['server'] = re.sub(r'_nextpacket_|_nextrr_', ',', json_mac_obj['ssdp']['notify']['server'])
                 else:
                     json_ssdp_feature = json_feature['ssdp']
-                    json_ssdp_feature['server'] = re.sub(r'_nextpacket_|_nextrr_', ',', json_feature['ssdp']['notify']['server'])
+                    json_ssdp_feature['server'] = re.sub(r'_nextpacket_|_nextrr_', ',', json_mac_obj['ssdp']['notify']['server'])
     if 'udp' in json_mac_obj:
         json_feature['udp'] = json_mac_obj['udp']
 
@@ -197,7 +203,7 @@ dns_txt_cnt = 0
 http_cnt = 0
 
 #remove key duplicate
-file_name = './train_data2'
+file_name = './shundian'
 wf = open(file_name+'.json', 'w+', encoding='utf-8')
 with open(file_name,'r') as raw_f:
     for line in raw_f.readlines():
@@ -231,11 +237,11 @@ with open(file_name,'r') as raw_f:
             dns_txt_cnt += 1
             new_str = str(dns_txt_cnt) + ',dns.txt'
             new_line = line.replace('dns.txt', new_str)
+        #mdns
         elif 'http' in line:
             http_cnt += 1
             new_str = str(http_cnt) + ',http'
             new_line = re.sub(r'http(?!:)', new_str, line)
-            #new_line = line.replace('http', new_str)
         else:
             new_line = line
         wf.write(new_line)
@@ -367,7 +373,7 @@ for pkt_obj in pkt_arr:
                                 req_str = req_list2comma_list(req_list)
                                 add_list_val(json_dhcpv6_obj, add_key, req_str)
                             else:
-                                add_ptcl_val(json_dhcpv6_obj, add_key, 'nak')
+                                add_ptcl_val(json_dhcpv6_obj, add_key, 'null')
         add_ptcl_val(json_dhcpv6_obj, 'series', series_str)
                 
     if('mdns' == ptcl):
@@ -387,20 +393,40 @@ for pkt_obj in pkt_arr:
                     json_mdns_type_obj = json_mdns_obj[mdns_type]
         for key in mdns_keys:
             if('Queries' == key):
-                q_val = add_mdns_rrs(layer_obj, key).split('&&')[0]
-                model = add_mdns_rrs(layer_obj, key).split('&&')[1]
+                q_val = ''
+                query_val = add_mdns_rrs(layer_obj, key)
+                if '&&' in query_val:
+                    q_val = add_mdns_rrs(layer_obj, key).split('&&')[0]
+                    model = add_mdns_rrs(layer_obj, key).split('&&')[1]
+                else:
+                    q_val = query_val
                 add_ptcl_val(json_mdns_type_obj, 'query', q_val)
             elif('Answers' == key):
-                a_val = add_mdns_rrs(layer_obj, key).split('&&')[0]
-                model = add_mdns_rrs(layer_obj, key).split('&&')[1]
+                a_val = ''
+                answer_val = add_mdns_rrs(layer_obj, key)
+                if '&&' in answer_val:
+                    a_val = add_mdns_rrs(layer_obj, key).split('&&')[0]
+                    model = add_mdns_rrs(layer_obj, key).split('&&')[1]
+                else:
+                    a_val = answer_val
                 add_ptcl_val(json_mdns_type_obj, 'answer', a_val)
             elif('Additional records' == key):
-                add_val = add_mdns_rrs(layer_obj, key).split('&&')[0]
-                model = add_mdns_rrs(layer_obj, key).split('&&')[1]
+                add_val = ''
+                addition_val = add_mdns_rrs(layer_obj, key)
+                if '&&' in addition_val:
+                    add_val = add_mdns_rrs(layer_obj, key).split('&&')[0]
+                    model = add_mdns_rrs(layer_obj, key).split('&&')[1]
+                else:
+                    add_val = addition_val
                 add_ptcl_val(json_mdns_type_obj, 'additional', add_val)
             elif('Authoritative nameservers' == key):
-                auth_val = add_mdns_rrs(layer_obj, key).split('&&')[0]
-                model = add_mdns_rrs(layer_obj, key).split('&&')[1]
+                auth_val = ''
+                authentity_val = add_mdns_rrs(layer_obj, key)
+                if '&&' in authentity_val:
+                    auth_val = add_mdns_rrs(layer_obj, key).split('&&')[0]
+                    model = add_mdns_rrs(layer_obj, key).split('&&')[1]
+                else:
+                    auth_val = authentity_val
                 add_ptcl_val(json_mdns_type_obj, 'authoritative', auth_val)
     elif('llmnr' == ptcl):
         llmnr_keys = layer_obj['llmnr']['Queries'].keys()
@@ -459,15 +485,18 @@ for pkt_obj in pkt_arr:
                     add_val = layer_obj['ssdp'][item]
                 elif 'http.unknown_header' in item:
                     add_key = layer_obj['ssdp'][item].split(': ')[0].lower()
-                    add_val = layer_obj['ssdp'][item].split(': ')[1].lower()
+                    if len(layer_obj['ssdp'][item].split(': ')) > 1:
+                        add_val = layer_obj['ssdp'][item].split(': ')[1].lower()
+                    else:
+                        add_val = 'nak'
                 else:
                     add_key = ''
             elif 'search' == ssdp_type:
-                add_key = layer_obj['ssdp'][item].split(': ')[0].lower()
-                if len(layer_obj['ssdp'][item].split(': ')) > 1:
-                    add_val = layer_obj['ssdp'][item].split(': ')[1].lower()
-                else:
-                    add_val = 'nak'
+                add_key = layer_obj['ssdp'][item].split(':')[0].lower()
+                #if len(layer_obj['ssdp'][item].split(':')) > 1:
+                add_val = layer_obj['ssdp'][item].split(':')[1].lower()
+                #else:
+                #    add_val = 'nak'
 
             
             if add_key:
@@ -481,13 +510,13 @@ for pkt_obj in pkt_arr:
             if add_key:
                 add_ptcl_val(json_ssdp_type_obj, add_key, add_val.replace(':', ','))
         add_ptcl_val(json_ssdp_type_obj, 'series', series_str)
-    elif('data' == ptcl):
-        if 'data' in layer_obj:
-            raw_data_str = layer_obj['data']['data.data']
-            data_str = hex_str2char_str(raw_data_str)
-            device_name = re.findall(r".*DEVICE_NAME=(.+?)\n.*", data_str)
-            if device_name:
-                add_ptcl_val(json_mac_obj, 'udp', device_name[0])
+    elif 'udp' in ptcl:
+        #if 'data' in layer_obj:
+        raw_data_str = layer_obj['data']['data.data']
+        data_str = hex_str2char_str(raw_data_str)
+        device_name = re.findall(r".*DEVICE_NAME=(.+?)\n.*", data_str)          
+        if device_name:
+            add_ptcl_val(json_mac_obj, 'udp', device_name[0])
     
     mac_gene_feature(json_mac_obj, resolved_mac, model)    
 
