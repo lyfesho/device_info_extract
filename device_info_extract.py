@@ -161,8 +161,8 @@ def mac_gene_feature(json_mac_obj, resolved_mac, model):
         if '39' in json_mac_obj['dhcpv6']:
             json_feature['dhcpv6'] = json_mac_obj['dhcpv6']['39']
     if 'mdns' in json_mac_obj:
-        if 'response' in json_mac_obj['mdns']:
-            raw_q_str = json_mac_obj['mdns']['response']['answer'] #query:query, response:answer
+        if 'query' in json_mac_obj['mdns']:
+            raw_q_str = json_mac_obj['mdns']['query']['query']
             q_name = extract_mdns_dot1(raw_q_str)
             json_feature['mdns_name'] = q_name
         if model:
@@ -182,7 +182,6 @@ def mac_gene_feature(json_mac_obj, resolved_mac, model):
             if 'server' in json_mac_obj['ssdp']['notify']:
                 if 'ssdp' not in json_feature:
                     json_feature['ssdp'] = {}
-                    json_feature['ssdp']['server'] = re.sub(r'_nextpacket_|_nextrr_', ',', json_mac_obj['ssdp']['notify']['server'])
                 else:
                     json_ssdp_feature = json_feature['ssdp']
                     json_ssdp_feature['server'] = re.sub(r'_nextpacket_|_nextrr_', ',', json_mac_obj['ssdp']['notify']['server'])
@@ -203,7 +202,7 @@ dns_txt_cnt = 0
 http_cnt = 0
 
 #remove key duplicate
-file_name = './shundian'
+file_name = './jiedai4'
 wf = open(file_name+'.json', 'w+', encoding='utf-8')
 with open(file_name,'r') as raw_f:
     for line in raw_f.readlines():
@@ -510,13 +509,13 @@ for pkt_obj in pkt_arr:
             if add_key:
                 add_ptcl_val(json_ssdp_type_obj, add_key, add_val.replace(':', ','))
         add_ptcl_val(json_ssdp_type_obj, 'series', series_str)
-    elif 'udp' in ptcl:
-        #if 'data' in layer_obj:
-        raw_data_str = layer_obj['data']['data.data']
-        data_str = hex_str2char_str(raw_data_str)
-        device_name = re.findall(r".*DEVICE_NAME=(.+?)\n.*", data_str)          
-        if device_name:
-            add_ptcl_val(json_mac_obj, 'udp', device_name[0])
+    elif('data' == ptcl):
+        if 'data' in layer_obj:
+            raw_data_str = layer_obj['data']['data.data']
+            data_str = hex_str2char_str(raw_data_str)
+            device_name = re.findall(r".*DEVICE_NAME=(.+?)\n.*", data_str)
+            if device_name:
+                add_ptcl_val(json_mac_obj, 'udp', device_name[0])
     
     mac_gene_feature(json_mac_obj, resolved_mac, model)    
 
