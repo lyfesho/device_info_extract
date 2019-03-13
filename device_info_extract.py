@@ -1,6 +1,12 @@
 import json
 import re
 import pandas as pd
+import csv
+import os
+
+#read files from dir
+def iter_dir():
+    path = ""
 
 def find_mac_obj(json_root_arr, mac):
     for json_pkt_obj in json_root_arr:
@@ -143,7 +149,8 @@ def extract_mdns_dot1(raw_str):
     return new_str
 
 def mac_gene_feature(json_mac_obj, resolved_mac, model):
-    json_mac_obj['feature_label'] = {}
+    if 'feature_label' not in json_mac_obj:
+        json_mac_obj['feature_label'] = {}
     json_feature = json_mac_obj['feature_label']
     json_feature['vendor'] = resolved_mac.split('_')[0]
     if 'dhcp' in json_mac_obj:
@@ -170,15 +177,16 @@ def mac_gene_feature(json_mac_obj, resolved_mac, model):
             json_feature['dhcpv6'] = json_mac_obj['dhcpv6']['39']
     if 'mdns' in json_mac_obj:
         if 'response' in json_mac_obj['mdns']:
-            raw_q_str = json_mac_obj['mdns']['response']['answer'] #query:query, response:answer
-            q_name = extract_mdns_dot1(raw_q_str)
-            json_feature['mdns_name'] = q_name
+            if 'answer' in json_mac_obj['mdns']['response']:
+                raw_q_str = json_mac_obj['mdns']['response']['answer'] #query:query, response:answer
+                q_name = extract_mdns_dot1(raw_q_str)
+                json_feature['mdns_name'] = q_name
         if model:
             json_feature['mdns_model'] = model
     if 'llmnr' in json_mac_obj:
         json_feature['llmnr'] = re.sub(r'_nextpacket_|_nextrr_', ',', json_mac_obj['llmnr'])
-    if 'smb' in json_mac_obj:
-        json_feature['smb'] = re.sub(r'_nextpacket_|_nextrr_', ',', json_mac_obj['smb'])
+    if 'browser' in json_mac_obj:
+        json_feature['browser'] = re.sub(r'_nextpacket_|_nextrr_', ',', json_mac_obj['browser'])
     if 'nbns' in json_mac_obj:
         json_feature['nbns'] = re.sub(r'_nextpacket_|_nextrr_', ',', json_mac_obj['nbns'])
     if 'ssdp' in json_mac_obj:
@@ -186,6 +194,24 @@ def mac_gene_feature(json_mac_obj, resolved_mac, model):
             if 'user-agent' in json_mac_obj['ssdp']['search']:
                 json_feature['ssdp'] = {}
                 json_feature['ssdp']['user-agent'] = re.sub(r'_nextpacket_|_nextrr_', ',', json_mac_obj['ssdp']['search']['user-agent'])
+            #used for sony tv
+            if 'X-AV-Client-Info' in json_mac_obj['ssdp']['search']:
+                cn = re.findall(r".*cn=\"(.+?)\";.*", json_mac_obj['ssdp']['search']['X-AV-Client-Info'])[0]
+                mn = re.findall(r".*mn=\"(.+?)\";.*", json_mac_obj['ssdp']['search']['X-AV-Client-Info'])[0]
+                if cn:
+                    if 'ssdp' not in json_feature:
+                        json_feature['ssdp'] = {}
+                        json_feature['ssdp']['clientcn'] = cn
+                    else:
+                        json_ssdp_feature = json_feature['ssdp']
+                        json_ssdp_feature['clientcn'] = cn
+                if mn:
+                    if 'ssdp' not in json_feature:
+                        json_feature['ssdp'] = {}
+                        json_feature['ssdp']['clientmn'] = mn
+                    else:
+                        json_ssdp_feature = json_feature['ssdp']
+                        json_ssdp_feature['clientmn'] = mn
         if 'notify' in json_mac_obj['ssdp']:
             if 'server' in json_mac_obj['ssdp']['notify']:
                 if 'ssdp' not in json_feature:
@@ -194,13 +220,51 @@ def mac_gene_feature(json_mac_obj, resolved_mac, model):
                 else:
                     json_ssdp_feature = json_feature['ssdp']
                     json_ssdp_feature['server'] = re.sub(r'_nextpacket_|_nextrr_', ',', json_mac_obj['ssdp']['notify']['server'])
+            #used for sony tv
+            if 'X-AV-Server-Info' in json_mac_obj['ssdp']['notify']:
+                cn = re.findall(r".*cn=\"(.+?)\";.*", json_mac_obj['ssdp']['notify']['X-AV-Server-Info'])[0]  
+                mn = re.findall(r".*mn=\"(.+?)\";.*", json_mac_obj['ssdp']['notify']['X-AV-Server-Info'])[0] 
+                if cn:
+                    if 'ssdp' not in json_feature:
+                        json_feature['ssdp'] = {}
+                        json_feature['ssdp']['servercn'] = cn
+                    else:
+                        json_ssdp_feature = json_feature['ssdp']
+                        json_ssdp_feature['servercn'] = cn
+                if mn:
+                    if 'ssdp' not in json_feature:
+                        json_feature['ssdp'] = {}
+                        json_feature['ssdp']['servermn'] = mn
+                    else:
+                        json_ssdp_feature = json_feature['ssdp']
+                        json_ssdp_feature['servermn'] = mn
     if 'udp' in json_mac_obj:
         json_feature['udp'] = json_mac_obj['udp']
 
+#read csv to dict
+def csv2dict(in_file,key,value):
+    new_dict = {}
+    with open(in_file, 'r') as f:
+        reader = csv.reader(f, delimiter=',')
+        fieldnames = next(reader)
+        reader = csv.DictReader(f, fieldnames=fieldnames, delimiter=',')
+        for row in reader:
+            new_dict[row[key]] = row[value]
+    return new_dict
 
-file_name = './pcap_data/ruilinwan_wifi'
-output_json_name = 'train_data6.json'
-output_csv_name = 'result6.csv'
+#rootdir = './pcap_data/iot_test/ipad/'
+#files = os.listdir(rootdir)
+#file_cnt = 0
+#for line in files:
+#    file_cnt = file_cnt + 1
+#    filepath = os.path.join(rootdir, line)
+
+#    file_name = filepath
+
+file_name = './pcap_data/0307haikou-hilton1'
+csv_file = './support/knowledge.csv'
+output_json_name = 'train_data657.json'
+output_csv_name = 'result657.csv'
 
 
 #create json_root_arr
@@ -249,7 +313,7 @@ with open(file_name,'r') as raw_f:
             new_str = str(dns_txt_cnt) + ',dns.txt'
             new_line = line.replace('dns.txt', new_str)
         #mdns
-        elif 'http' in line:
+        elif ('http' in line) and ('class' not in line):
             http_cnt += 1
             new_str = str(http_cnt) + ',http'
             new_line = re.sub(r'http(?!:)', new_str, line)
@@ -312,6 +376,18 @@ for pkt_obj in pkt_arr:
                 json_dhcp_type_obj = json_dhcp_obj[dhcp_type]
             elif('53' == add_key) and ('6' == add_val):
                 dhcp_type = 'nak'
+                add_ptcl_obj(json_dhcp_obj, dhcp_type)
+                json_dhcp_type_obj = json_dhcp_obj[dhcp_type]
+            elif('53' == add_key) and ('2' == add_val):
+                dhcp_type = 'offer'
+                add_ptcl_obj(json_dhcp_obj, dhcp_type)
+                json_dhcp_type_obj = json_dhcp_obj[dhcp_type]
+            elif('53' == add_key) and ('5' == add_val):
+                dhcp_type = 'ack'
+                add_ptcl_obj(json_dhcp_obj, dhcp_type)
+                json_dhcp_type_obj = json_dhcp_obj[dhcp_type]
+            elif('53' == add_key) and ('8' == add_val):
+                dhcp_type = 'inform'
                 add_ptcl_obj(json_dhcp_obj, dhcp_type)
                 json_dhcp_type_obj = json_dhcp_obj[dhcp_type]
 
@@ -531,18 +607,33 @@ for pkt_obj in pkt_arr:
         device_name = re.findall(r".*DEVICE_NAME=(.+?)\n.*", data_str)          
         if device_name:
             add_ptcl_val(json_mac_obj, 'udp', device_name[0])
-    
     mac_gene_feature(json_mac_obj, resolved_mac, model)    
 
 with open(output_json_name, 'w') as outfile:
     json.dump(json_root_arr, outfile, indent=4)
 
+#read in knowledge csv
+vendor_know_dict = csv2dict(csv_file, 'vendor_key', 'vendor')
+type_know_dict = csv2dict(csv_file, 'type_key', 'type')
+model_know_dict = csv2dict(csv_file, 'model_key', 'model')
+
 #generate csv file
 #mac|feature
 mac_list = []
 feature_list = []
+mac_prefix_list = []
+vendor_list = []
+type_list = []
+model_list = []
 for mac_obj in json_root_arr:
     mac_list.append(mac_obj['mac'])
+
+    #mac_prefix
+    mac_arr = mac_obj['mac'].split(':')
+    mac_prefix = mac_arr[0]
+    mac_prefix = mac_prefix + mac_arr[1]
+    mac_prefix = mac_prefix + mac_arr[2]
+
     feature_str = ''
     for key in mac_obj['feature_label'].keys():
         if 'ssdp' == key:
@@ -557,7 +648,30 @@ for mac_obj in json_root_arr:
             else:
                 feature_str = feature_str + ',' + mac_obj['feature_label'][key].replace('\r\n', '')
     feature_list.append(feature_str)
-dataframe = pd.DataFrame({'mac':mac_list, 'feature':feature_list}, columns=["mac", "feature"])
+
+    #mac_prefix label:
+    mac_prefix_list.append(mac_prefix)
+
+    #vendor label:
+    vendor = ''
+    for vendor_key in vendor_know_dict.keys():
+        if vendor_key.lower() in feature_str.lower():
+            vendor = vendor_know_dict[vendor_key]
+    vendor_list.append(vendor)
+    #type label:
+    dev_type = ''
+    for type_key in type_know_dict.keys():
+        if type_key.lower() in feature_str.lower():
+            dev_type = type_know_dict[type_key]
+    type_list.append(dev_type)
+    #model label:
+    model = ''
+    for model_key in model_know_dict.keys():
+        if model_key.lower() in feature_str.lower():
+            model = model_know_dict[model_key]
+    model_list.append(model)
+
+dataframe = pd.DataFrame({'mac':mac_list, 'feature':feature_list, 'mac_prefix':mac_prefix_list, 'vendor':vendor_list, 'type':type_list, 'model':model_list}, columns=["mac", "feature", "mac_prefix", "vendor", "type", "model"])
 dataframe.to_csv(output_csv_name, sep=',')
 #print(json_root_arr)
    
