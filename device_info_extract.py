@@ -239,8 +239,8 @@ def mac_gene_feature(json_mac_obj, resolved_mac, model):
                         json_ssdp_feature = json_feature['ssdp']
                         json_ssdp_feature['servermn'] = mn
     if 'udp' in json_mac_obj:
-        json_feature['udp'] = json_mac_obj['udp']
-
+        json_feature['udp'] = json_mac_obj['udp']     
+        
 #read csv to dict
 def csv2dict(in_file,key,value):
     new_dict = {}
@@ -261,14 +261,15 @@ def csv2dict(in_file,key,value):
 
 #    file_name = filepath
 
-file_name = './pcap_data/0307haikou-hilton1'
+file_name = './pcap_data/mova'
 csv_file = './support/knowledge.csv'
-output_json_name = 'train_data657.json'
-output_csv_name = 'result657.csv'
+output_json_name = 'train_data1.json'
+output_csv_name = 'result1.csv'
 
 
 #create json_root_arr
 json_root_arr = []
+json_feature_arr = []
 
 bootp_option_type_cnt = 0
 bootp_option_type_tree_cnt = 0
@@ -607,7 +608,7 @@ for pkt_obj in pkt_arr:
         device_name = re.findall(r".*DEVICE_NAME=(.+?)\n.*", data_str)          
         if device_name:
             add_ptcl_val(json_mac_obj, 'udp', device_name[0])
-    mac_gene_feature(json_mac_obj, resolved_mac, model)    
+    mac_gene_feature(json_mac_obj, resolved_mac, model) 
 
 with open(output_json_name, 'w') as outfile:
     json.dump(json_root_arr, outfile, indent=4)
@@ -616,6 +617,21 @@ with open(output_json_name, 'w') as outfile:
 vendor_know_dict = csv2dict(csv_file, 'vendor_key', 'vendor')
 type_know_dict = csv2dict(csv_file, 'type_key', 'type')
 model_know_dict = csv2dict(csv_file, 'model_key', 'model')
+
+
+#add prefix
+vendor_know_arr = []
+type_know_arr = []
+model_know_arr = []
+for vendor_key in vendor_know_dict.keys():
+    vendor_know_arr.append(vendor_key)
+    vendor_know_arr.sort(reverse = True)
+for type_key in type_know_dict.keys():
+    type_know_arr.append(type_key)
+    type_know_arr.sort(reverse = True)
+for model_key in model_know_dict.keys():
+    model_know_arr.append(model_key)
+    model_know_arr.sort(reverse = True)
 
 #generate csv file
 #mac|feature
@@ -634,7 +650,7 @@ for mac_obj in json_root_arr:
     mac_prefix = mac_prefix + mac_arr[1]
     mac_prefix = mac_prefix + mac_arr[2]
 
-    feature_str = ''
+    feature_str = mac_prefix + ','
     for key in mac_obj['feature_label'].keys():
         if 'ssdp' == key:
             for type_key in mac_obj['feature_label']['ssdp'].keys():
@@ -654,21 +670,24 @@ for mac_obj in json_root_arr:
 
     #vendor label:
     vendor = ''
-    for vendor_key in vendor_know_dict.keys():
+    for vendor_key in vendor_know_arr:
         if vendor_key.lower() in feature_str.lower():
             vendor = vendor_know_dict[vendor_key]
+            break
     vendor_list.append(vendor)
     #type label:
     dev_type = ''
-    for type_key in type_know_dict.keys():
+    for type_key in type_know_arr:
         if type_key.lower() in feature_str.lower():
             dev_type = type_know_dict[type_key]
+            break
     type_list.append(dev_type)
     #model label:
     model = ''
-    for model_key in model_know_dict.keys():
+    for model_key in model_know_arr:
         if model_key.lower() in feature_str.lower():
             model = model_know_dict[model_key]
+            break
     model_list.append(model)
 
 dataframe = pd.DataFrame({'mac':mac_list, 'feature':feature_list, 'mac_prefix':mac_prefix_list, 'vendor':vendor_list, 'type':type_list, 'model':model_list}, columns=["mac", "feature", "mac_prefix", "vendor", "type", "model"])
