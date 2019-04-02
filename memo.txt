@@ -1,0 +1,102 @@
+xingbake£º	train_data1
+jiedai4£º		train_data2
+shundian£º	train_data3	
+huiyi_wifi:		train_data4
+huiyi_wifi2:	train_data5
+ruilinwan_wifi:	train_data6
+meizhoudongpo:	train_data7
+paifang:		train_data8
+shangdaokafei:	train_data9
+hanjinmei:	train_data10
+piaodashu:	train_data11
+shitang5:		train_data12
+xingbake-wifi:	train_data13
+chumenwenwen:	train_data14
+huawei:		train_data15
+huawei2:		train_data16
+lenovo:		train_data17
+samsung:		train_data18
+samsung1:	train_data19
+xiaomi:		train_data20
+jizhoudaoxiyu:	train_data21
+yisifengshang:	train_data22
+2ali:		train_data23
+mulianzhuang:	train_data24
+qinchengli:	train_data25
+0226meizhoudongpo:train_data26
+0302beijingwifi:	train_data27
+0125train:	train_data28
+0212robot-home:	train_data29
+mybeijing-wifi:	train_data30
+0124huayan528:	train_data31weiwan
+bubugao:		train_data32
+quanniujiang:	train_data33
+yuquanlu:	train_data34
+
+aria:		train_data35-54
+d-linkcam:	train_data55-74
+d-linkdaycam:	train_data75-94
+d-linkhomehub:	train_data95-114
+d-linksensor:	train_data115-134
+d-linksiren:	train_data135-154
+d-linkswitch:	train_data155-174
+d-linkwatersensor:	train_data175-194
+edimaxcam:	train_data195-214
+edimaxplug1101w:	train_data215-234
+edimaxplug2101w:	train_data235-254
+ednetcam:	train_data255-274
+ednetgateway:	train_data275-294
+huebridge:	train_data295-314
+hueswitch:	train_data315-334
+ikettle2:		train_data335-354
+lightify:		train_data355-374
+maxgateway:	train_data375-394
+smartercoffee:	train_data395-414
+tplinkplughs100:	train_data415-434
+tplinkplughs110:	train_data435-454
+wemoinsightswitch:	train_data455-474
+wemolink:	train_data475-494
+wemoswitch:	train_data495-514
+withings:		train_data515-534
+
+haikou_hilton:	train_data535
+haikou_airport:	train_data536
+camera:		train_data537
+camera2:		train_data538
+t2-wifi:		train_data539
+xinnianhua:	train_data540
+xinnianhuahuawei:	train_data541
+
+ipad:		train_data542-561
+iphone6:		train_data562-581
+mate8:		train_data582-601
+nova:		train_data602-621
+switch:		train_data622-631
+tv:		train_data632-651
+
+xinzhongguanxiaomizhijia:	train_data652
+0307haikou-hilton:	train_data653
+0308xiaomi:	train_data654
+0308xiaomi2:	train_data655
+0308xiaomi3:	train_data656
+0307haikou-hilton1:	train_data657
+mova:	train_data658
+
+0310qinghua:	train_data659
+0311ycx:		train_data660
+oumeihui:	train_data661
+yunmi:		train_data662
+0312yuquanlu:	train_data663
+
+guilin-airport:	train_data664
+sheraton2:	train_data665
+sheraton-guilin:	train_data666
+shouer:		train_data667
+
+stu-xdwlan:	train_data668
+xd-yixun:		train_data669
+
+0324-fugang-airport:	train_data670
+0324-fugang-royalhotel:	train_data671
+0324-fugang-royalhotel1:	train_data672
+0325-fugang-royalhotel2:	train_data673

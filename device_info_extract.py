@@ -4,6 +4,12 @@ import pandas as pd
 import csv
 import os
 
+seperator = '|'
+file_name = './pcap_data/0324-fugang-royalhotel'
+csv_file = './support/knowledge.csv'
+output_json_name = 'train_data671.json'
+output_csv_name = 'result671.csv'
+
 #read files from dir
 def iter_dir():
     path = ""
@@ -64,9 +70,9 @@ def add_mdns_rrs(layer_obj, key):
     model = ''
     for rr_key in keys:
         if not val:
-            val = rr_key.replace(':', ',').replace('.', ',')
+            val = rr_key.replace(':', seperator).replace('.', seperator).replace(',', seperator)
         else:
-            val = val + '_nextrr_' + rr_key.replace(':', ',').replace('.', ',')
+            val = val + '_nextrr_' + rr_key.replace(':', seperator).replace('.', seperator).replace(',', seperator)
         
         if 'dns.resp.type' in layer_obj['mdns'][key][rr_key]:
             if '16' == layer_obj['mdns'][key][rr_key]['dns.resp.type']:
@@ -77,7 +83,7 @@ def add_mdns_rrs(layer_obj, key):
                 for txt_key in txt_list:
                     if ('dns.txt' in txt_key) and ('dns.txt.length' not in txt_key):
                         #print(layer_obj['mdns'][key][rr_key][txt_key])
-                        val = val + ',' + layer_obj['mdns'][key][rr_key][txt_key]        
+                        val = val + seperator + layer_obj['mdns'][key][rr_key][txt_key]        
                         if 'model=' in layer_obj['mdns'][key][rr_key][txt_key]:
                             model = layer_obj['mdns'][key][rr_key][txt_key].split('=')[1]
     if model:
@@ -143,9 +149,9 @@ def extract_mdns_dot1(raw_str):
         rr_list = pkt.split('_nextrr_')
         for rr in rr_list:
             if not new_str:
-                new_str = rr.split(',')[0]
-            elif (rr.split(',')[0] not in new_str):
-                new_str = new_str + ',' + rr.split(',')[0]
+                new_str = rr.split(seperator)[0]
+            elif (rr.split(seperator)[0] not in new_str):
+                new_str = new_str + ',' + rr.split(seperator)[0]
     return new_str
 
 def mac_gene_feature(json_mac_obj, resolved_mac, model):
@@ -172,6 +178,8 @@ def mac_gene_feature(json_mac_obj, resolved_mac, model):
                 mod_name = re.findall(r".*Mod=(.+?)\n.*", json_mac_obj['dhcp']['discover']['77'])  
                 if mod_name:
                     json_feature['dhcp_userclass'] = mod_name[0]
+        if ('ack' in json_mac_obj['dhcp']) or ('offer' in json_mac_obj['dhcp']):
+            json_feature['dhcp_router'] = 'router'     
     if 'dhcpv6' in json_mac_obj:
         if '39' in json_mac_obj['dhcpv6']:
             json_feature['dhcpv6'] = json_mac_obj['dhcpv6']['39']
@@ -252,19 +260,8 @@ def csv2dict(in_file,key,value):
             new_dict[row[key]] = row[value]
     return new_dict
 
-#rootdir = './pcap_data/iot_test/ipad/'
-#files = os.listdir(rootdir)
-#file_cnt = 0
-#for line in files:
-#    file_cnt = file_cnt + 1
-#    filepath = os.path.join(rootdir, line)
-
-#    file_name = filepath
-
-file_name = './pcap_data/mova'
-csv_file = './support/knowledge.csv'
-output_json_name = 'train_data1.json'
-output_csv_name = 'result1.csv'
+#only for yuquanlu1
+#mac_exist_dict = csv2dict('./csv_result_new/result34.csv', 'mac', 'vendor')
 
 
 #create json_root_arr
@@ -335,6 +332,8 @@ for pkt_obj in pkt_arr:
     #src mac:
     eth_obj = layer_obj['eth']
     mac = eth_obj['eth.src']
+    #if mac in mac_exist_dict:
+    #    continue
     json_mac_obj = find_mac_obj(json_root_arr, mac)
     
     #resolved src mac:
@@ -522,19 +521,25 @@ for pkt_obj in pkt_arr:
                     auth_val = authentity_val
                 add_ptcl_val(json_mdns_type_obj, 'authoritative', auth_val)
     elif('llmnr' == ptcl):
-        llmnr_keys = layer_obj['llmnr']['Queries'].keys()
-        for key in llmnr_keys: #only one key
-            llmnr_qname = key.split(':')[0]
-        add_ptcl_val(json_mac_obj, ptcl, llmnr_qname)
+        if isinstance(layer_obj['llmnr']['Queries'], str):
+            print(layer_obj['llmnr']['Queries'])
+        else:
+            llmnr_keys = layer_obj['llmnr']['Queries'].keys()
+            for key in llmnr_keys: #only one key
+                llmnr_qname = key.split(':')[0]
+            add_ptcl_val(json_mac_obj, ptcl, llmnr_qname)
     elif('browser' == ptcl):
         smb_srcname = layer_obj['nbdgm']['nbdgm.source_name']  #only one sourcename
         add_ptcl_val(json_mac_obj, ptcl, smb_srcname)
     elif('nbns' == ptcl):
         if 'Queries' in layer_obj['nbns']:
-            nbns_keys = layer_obj['nbns']['Queries'].keys()
-            for key in nbns_keys:
-                nbns_qname = key.split(':')[0]
-            add_ptcl_val(json_mac_obj, ptcl, nbns_qname)
+            if isinstance(layer_obj['nbns']['Queries'], str):
+                print(layer_obj['nbns']['Queries'])
+            else:
+                nbns_keys = layer_obj['nbns']['Queries'].keys()
+                for key in nbns_keys:
+                    nbns_qname = key.split(':')[0]
+                add_ptcl_val(json_mac_obj, ptcl, nbns_qname)
     elif('ssdp' == ptcl):
         ssdp_keys = layer_obj['ssdp'].keys() #key is m-search or notify
         add_ptcl_obj(json_mac_obj, ptcl)
@@ -602,12 +607,12 @@ for pkt_obj in pkt_arr:
                 add_ptcl_val(json_ssdp_type_obj, add_key, add_val.replace(':', ','))
         add_ptcl_val(json_ssdp_type_obj, 'series', series_str)
     elif 'udp' in ptcl:
-        #if 'data' in layer_obj:
-        raw_data_str = layer_obj['data']['data.data']
-        data_str = hex_str2char_str(raw_data_str)
-        device_name = re.findall(r".*DEVICE_NAME=(.+?)\n.*", data_str)          
-        if device_name:
-            add_ptcl_val(json_mac_obj, 'udp', device_name[0])
+        if 'data' in layer_obj:
+            raw_data_str = layer_obj['data']['data.data']
+            data_str = hex_str2char_str(raw_data_str)
+            device_name = re.findall(r".*DEVICE_NAME=(.+?)\n.*", data_str)          
+            if device_name:
+                add_ptcl_val(json_mac_obj, 'udp', device_name[0])
     mac_gene_feature(json_mac_obj, resolved_mac, model) 
 
 with open(output_json_name, 'w') as outfile:
@@ -650,7 +655,7 @@ for mac_obj in json_root_arr:
     mac_prefix = mac_prefix + mac_arr[1]
     mac_prefix = mac_prefix + mac_arr[2]
 
-    feature_str = mac_prefix + ','
+    feature_str = mac_prefix
     for key in mac_obj['feature_label'].keys():
         if 'ssdp' == key:
             for type_key in mac_obj['feature_label']['ssdp'].keys():
@@ -680,6 +685,9 @@ for mac_obj in json_root_arr:
     for type_key in type_know_arr:
         if type_key.lower() in feature_str.lower():
             dev_type = type_know_dict[type_key]
+            break
+        if 'router' in feature_str.lower():
+            dev_type = vendor + '_router'
             break
     type_list.append(dev_type)
     #model label:
